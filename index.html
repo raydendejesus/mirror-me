@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mirror Me — Body Outline &amp; Personal Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.1/dist/body-pix.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.1/dist/body-pix.min.umd.js"></script>
 <style>
   :root{
     --accent:#38bdf8;
@@ -60,7 +59,7 @@
     inset:0;
     width:100%;
     height:100%;
-    object-fit:cover;
+    object-fit:contain;
   }
   canvas{
     position:absolute;
@@ -218,7 +217,7 @@
 <body>
 
   <h1>🪞 Mirror Me — Body Outline &amp; Personal Tracker</h1>
-  <p class="subtitle">Live body segmentation outlines you in red right in your browser, lets you draw over your own silhouette, and can learn a quick visual "signature" of you so it can pick you out from others in frame. Nothing ever leaves your device.</p>
+  <p class="subtitle">Live body segmentation outlines people right in your browser, lets you draw over your own silhouette, and can learn each registered person's visual "signature" so it can label who's who — even two people at once. Nothing ever leaves your device.</p>
 
   <div class="stage" id="stage">
     <div class="placeholder" id="placeholder">Camera is off.<br>Press "Start Camera" below to begin.</div>
@@ -229,21 +228,39 @@
     </div>
   </div>
 
+  <div class="stage" id="stage2" style="display:none;">
+    <div class="placeholder" id="placeholder2">Second camera is off.</div>
+    <div class="flip" id="flipWrap2" style="display:none;">
+      <video id="video2" autoplay playsinline muted></video>
+      <canvas id="outlineCanvas2"></canvas>
+    </div>
+  </div>
+
   <div class="statusbar">
     <span class="pill" id="pillCamera">Camera: <b>off</b></span>
     <span class="pill" id="pillModel">Model: <b>not loaded</b></span>
     <span class="pill" id="pillPeople">People detected: <b>0</b></span>
     <span class="pill" id="pillHands">Hands detected: <b>0</b></span>
-    <span class="pill" id="pillProfile">Profile: <b>none saved</b></span>
+    <span class="pill" id="pillProfile">Registered: <b>0 people</b></span>
   </div>
 
   <div class="panel">
     <p class="section-title">Camera</p>
     <div class="row">
+      <select id="cameraSelect1" style="min-width:160px;"></select>
       <button class="primary" id="btnStart">Start Camera</button>
       <button id="btnStop" disabled>Stop Camera</button>
     </div>
-    <p class="hint">On first start the browser will ask for camera permission, and the segmentation model (a few MB) will download once and cache in your browser.</p>
+    <p class="hint">On first start the browser will ask for camera permission, and the segmentation model (a few MB) will download once and cache in your browser. Once permission is granted the dropdown lists your available cameras — picking a different one restarts the feed on that camera.</p>
+
+    <div class="divider"></div>
+
+    <p class="section-title">Second Camera (optional)</p>
+    <div class="row">
+      <label class="inline"><input type="checkbox" id="chkCam2"> Enable a second camera view</label>
+      <select id="cameraSelect2" style="min-width:160px;" disabled></select>
+    </div>
+    <p class="hint" id="cam2Status">Off. A second webcam can view the scene at the same time, with the same outline and name recognition — it's a viewer only, though, and doesn't drive the Learn/Record controls below, which stay tied to the first camera.</p>
 
     <div class="divider"></div>
 
@@ -258,20 +275,29 @@
       <input type="range" id="refreshRate" min="1" max="15" step="1" value="6">
       <span class="val" id="refreshRateVal">6 / sec</span>
     </div>
-    <p class="hint">Camera FPS asks your webcam to capture at that rate (actual rate depends on your camera/browser). Refresh rate controls how often the outline/gesture detection re-runs each second — lower it on slower computers, raise it for smoother tracking.</p>
+    <div class="slider-row">
+      <label class="inline" style="min-width:150px;">Body outline quality</label>
+      <select id="bodyQuality">
+        <option value="fast">Fast (MobileNet)</option>
+        <option value="accurate">Accurate (ResNet50, bigger download)</option>
+      </select>
+    </div>
+    <p class="hint">Camera FPS asks your webcam to capture at that rate (actual rate depends on your camera/browser). Refresh rate controls how often the outline/gesture detection re-runs each second — lower it on slower computers, raise it for smoother tracking. "Accurate" body outline uses a much higher-quality segmentation model (~90MB one-time download, cached after) with cleaner edges, at the cost of a slower first load and more GPU use.</p>
 
     <div class="divider"></div>
 
-    <p class="section-title">Learn &amp; Track</p>
+    <p class="section-title">People</p>
     <div class="row">
-      <button id="btnLearn" disabled>Learn My Look</button>
+      <input type="text" id="personName" placeholder="Person's name, e.g. Rayden">
+      <button id="btnLearnPerson" disabled>Learn This Person</button>
+      <button id="btnAddMorePerson" disabled>+ Add More Samples</button>
+      <button id="btnRecordContinuous" disabled>● Record Training Photos</button>
       <div id="progressWrap"><div id="progressBar"></div></div>
-      <span id="learnStatus" class="hint"></span>
     </div>
-    <div class="row between">
-      <span class="hint" id="matchStatus">Stand alone in frame and click "Learn My Look" to create your profile. Once saved, you'll be outlined in red and anyone else in frame in blue-gray.</span>
-      <button class="danger" id="btnReset" disabled>Reset Profile</button>
-    </div>
+    <p class="hint" id="learnStatus">Have just that one person stand alone in frame, type their name above, then click "Learn This Person". Register as many people as you like — each gets their own outline color. To improve someone already registered, type their exact name and click "Add More Samples" instead of re-learning from scratch. For the best results, click "Record Training Photos" and walk around — turn, step closer, then step farther back — for a while; it keeps capturing photos until you click "Stop Recording", then blends them in. Recognition is also forgiving while you move: once it's confident who you are, it'll keep tracking you through a few uncertain frames (walking, turning, being farther away) instead of needing a perfect match every single frame.</p>
+    <div class="gesture-list" id="peopleList"></div>
+    <p class="hint" id="matchStatus">No one registered yet — everyone detected is outlined in plain red.</p>
+    <p class="hint">Registered people are live on the page as <code>window.MirrorMePeople</code> (e.g. <code>window.MirrorMePeople["Rayden"]</code> is <code>true</code>/<code>false</code> each frame, and <code>window.MirrorMePeople._visible</code> lists everyone currently matched), plus a <code>mirrorme:person</code> event on <code>window</code> with <code>{ name, active, similarity }</code> — so you can assign different values or behavior per recognized person, including when two specific people are both in frame at once.</p>
 
     <div class="divider"></div>
 
@@ -292,9 +318,10 @@
     <div class="row">
       <input type="text" id="gestureName" placeholder="Gesture name, e.g. thumbs-up">
       <button id="btnRecordGesture" disabled>Record Gesture</button>
+      <button id="btnAddMoreGesture" disabled>+ Add More Samples</button>
       <div id="gestureProgressWrap" style="display:none;flex:1;min-width:140px;height:8px;background:#1e293b;border-radius:999px;overflow:hidden;"><div id="gestureProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#22d3ee);transition:width .2s;"></div></div>
     </div>
-    <p class="hint" id="gestureRecordStatus">Hold one hand clearly in frame, type a name above, then click "Record Gesture" and hold the pose still.</p>
+    <p class="hint" id="gestureRecordStatus">Hold one hand clearly in frame, type a name above, then click "Record Gesture" and hold the pose still. To improve a gesture you already trained, type its exact name and click "Add More Samples" instead — that merges new captures into the existing one rather than replacing it.</p>
     <div class="gesture-list" id="gestureList"></div>
     <p class="hint" id="gestureStatus">Detected gesture: <b>none</b></p>
     <p class="hint">Trained gestures are live on the page as <code>window.MirrorMeGestures</code> (e.g. <code>window.MirrorMeGestures["thumbs-up"]</code> is <code>true</code>/<code>false</code> each frame), and as a <code>mirrorme:gesture</code> event on <code>window</code> with <code>{ name, active, similarity }</code> whenever a gesture turns on or off — open devtools console to read it, or add your own script after this one to react to it in code.</p>
@@ -317,6 +344,19 @@
   const outlineCtx = outlineCanvas.getContext('2d');
   const drawCtx = drawCanvas.getContext('2d');
 
+  const cameraSelect1 = document.getElementById('cameraSelect1');
+  const chkCam2 = document.getElementById('chkCam2');
+  const cameraSelect2 = document.getElementById('cameraSelect2');
+  const cam2Status = document.getElementById('cam2Status');
+  const stage2 = document.getElementById('stage2');
+  const placeholder2 = document.getElementById('placeholder2');
+  const flipWrap2 = document.getElementById('flipWrap2');
+  const video2 = document.getElementById('video2');
+  const outlineCanvas2 = document.getElementById('outlineCanvas2');
+  const outlineCtx2 = outlineCanvas2.getContext('2d');
+
+  const btnRecordContinuous = document.getElementById('btnRecordContinuous');
+
   const pillCamera = document.getElementById('pillCamera');
   const pillModel = document.getElementById('pillModel');
   const pillPeople = document.getElementById('pillPeople');
@@ -325,10 +365,12 @@
 
   const btnStart = document.getElementById('btnStart');
   const btnStop = document.getElementById('btnStop');
-  const btnLearn = document.getElementById('btnLearn');
-  const btnReset = document.getElementById('btnReset');
+  const personNameInput = document.getElementById('personName');
+  const btnLearnPerson = document.getElementById('btnLearnPerson');
+  const btnAddMorePerson = document.getElementById('btnAddMorePerson');
   const learnStatus = document.getElementById('learnStatus');
   const matchStatus = document.getElementById('matchStatus');
+  const peopleListEl = document.getElementById('peopleList');
   const progressWrap = document.getElementById('progressWrap');
   const progressBar = document.getElementById('progressBar');
 
@@ -341,44 +383,93 @@
   const cameraFpsVal = document.getElementById('cameraFpsVal');
   const refreshRateSlider = document.getElementById('refreshRate');
   const refreshRateVal = document.getElementById('refreshRateVal');
+  const bodyQualitySelect = document.getElementById('bodyQuality');
 
   const chkHands = document.getElementById('chkHands');
   const gestureNameInput = document.getElementById('gestureName');
   const btnRecordGesture = document.getElementById('btnRecordGesture');
+  const btnAddMoreGesture = document.getElementById('btnAddMoreGesture');
   const gestureProgressWrap = document.getElementById('gestureProgressWrap');
   const gestureProgressBar = document.getElementById('gestureProgressBar');
   const gestureRecordStatus = document.getElementById('gestureRecordStatus');
   const gestureListEl = document.getElementById('gestureList');
   const gestureStatus = document.getElementById('gestureStatus');
 
-  const STORAGE_KEY = 'mirrorMeProfile';
+  const OLD_PROFILE_KEY = 'mirrorMeProfile';
+  const PEOPLE_STORAGE_KEY = 'mirrorMePeopleProfiles';
   const GESTURE_STORAGE_KEY = 'mirrorMeGestureProfiles';
   const FEATURE_LEN = 10; // headRGB(3) + torsoRGB(3) + legsRGB(3) + aspectRatio(1)
   const HAND_FEATURE_LEN = 42; // 21 landmarks * (x,y) normalized to wrist + hand scale
+  const PERSON_PALETTE = ['#ef4444','#60a5fa','#4ade80','#facc15','#f472b6','#a78bfa','#2dd4bf','#fb923c'];
+
+  const TASKS_VISION_VERSION = '1.2.0';
+  const HAND_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+
+  const BODY_LEARN_SAMPLES = 20;
+  const BODY_LEARN_INTERVAL_MS = 300;
+  const BODY_LEARN_MIN_SAMPLES = 8;
+  const GESTURE_SAMPLES = 15;
+  const GESTURE_INTERVAL_MS = 200;
+  const GESTURE_MIN_SAMPLES = 6;
+
+  // 'high' internal resolution and a lower scoreThreshold catch smaller/farther
+  // people that 'medium' + 0.3 would miss, at some extra GPU cost
+  const SEGMENT_OPTIONS = { internalResolution: 'high', segmentationThreshold: 0.6, maxDetections: 6, scoreThreshold: 0.15, nmsRadius: 20 };
+
+  // live matching: a confident match always counts; a weaker-but-plausible match
+  // still counts as "the same person" if it's near where that person was last
+  // seen a moment ago — this is what lets recognition survive someone walking,
+  // turning, or being farther from the camera instead of needing a clean match
+  // every single frame
+  const MATCH_ACCEPT = 0.40;
+  const MATCH_CONTINUE = 0.26;
+  const MATCH_CONTINUE_MAX_AGE_MS = 1500;
+  const MATCH_CONTINUE_MAX_DIST_RATIO = 0.9;
+
+  function boxCenter(box){ return [(box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2]; }
+  function boxDiag(box){ return Math.hypot(box.maxX - box.minX, box.maxY - box.minY); }
 
   let net = null;
-  let handNet = null;
+  let bodyQuality = 'fast';
+  let handLandmarker = null;
   let handNetLoading = false;
   let stream = null;
+  let stream2 = null;
   let running = false;
+  let running2 = false;
+  let camSession1 = 0;
+  let camSession2 = 0;
   let learning = false;
+  let continuousRecording = false;
   let recordingGesture = false;
   let handEnabled = false;
   let cameraFps = Number(cameraFpsSlider.value);
   let detectIntervalMs = Math.round(1000 / Number(refreshRateSlider.value));
-  let profile = loadProfile();
+  let peopleProfiles = loadPeople();
+  let lastPersonState = {};
   let gestureProfiles = loadGestures();
   let lastGestureState = {};
 
-  window.MirrorMeGestures = window.MirrorMeGestures || {};
+  migrateOldProfile();
 
-  // ---------- small offscreen canvases reused across frames ----------
-  const maskCanvas = document.createElement('canvas');
-  const maskCtx = maskCanvas.getContext('2d');
-  const glowCanvas = document.createElement('canvas');
-  const glowCtx = glowCanvas.getContext('2d');
-  const frameCanvas = document.createElement('canvas'); // for sampling video pixel colors
-  const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true });
+  window.MirrorMeGestures = window.MirrorMeGestures || {};
+  window.MirrorMePeople = window.MirrorMePeople || {};
+  window.MirrorMePeople._visible = window.MirrorMePeople._visible || [];
+
+  // ---------- small offscreen canvases reused across frames, one set per camera ----------
+  function createBuffers(){
+    const maskCanvas = document.createElement('canvas');
+    const glowCanvas = document.createElement('canvas');
+    const frameCanvas = document.createElement('canvas'); // for sampling video pixel colors
+    return {
+      maskCanvas, maskCtx: maskCanvas.getContext('2d'),
+      glowCanvas, glowCtx: glowCanvas.getContext('2d'),
+      frameCanvas, frameCtx: frameCanvas.getContext('2d', { willReadFrequently: true }),
+      lastSeen: {} // name -> { box, time }, used for sticky identity tracking
+    };
+  }
+  const buf1 = createBuffers();
+  let buf2 = null;
 
   function setPill(pill, text, cls){
     pill.innerHTML = pill.textContent.split(':')[0] + ': <b>' + text + '</b>';
@@ -386,37 +477,94 @@
     if(cls) pill.classList.add(cls);
   }
 
-  function loadProfile(){
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function hexToRgb(hex){
+    const n = parseInt(hex.slice(1), 16);
+    return [(n>>16)&255, (n>>8)&255, n&255];
+  }
+
+  // ---------- people profiles (multi-person naming) ----------
+  function loadPeople(){
     try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return null;
+      const raw = localStorage.getItem(PEOPLE_STORAGE_KEY);
+      if(!raw) return {};
       const parsed = JSON.parse(raw);
-      if(parsed && Array.isArray(parsed.vector) && parsed.vector.length === FEATURE_LEN) return parsed;
-      return null;
-    }catch(e){ return null; }
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    }catch(e){ return {}; }
   }
 
-  function saveProfile(vector, samples){
-    profile = { vector, samples, savedAt: new Date().toISOString() };
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); }catch(e){}
-    refreshProfilePill();
+  function savePeople(){
+    try{ localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleProfiles)); }catch(e){}
   }
 
-  function resetProfile(){
-    profile = null;
-    try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
-    refreshProfilePill();
-    matchStatus.textContent = 'Profile cleared. Stand alone in frame and click "Learn My Look" to create a new one.';
+  // one-time upgrade from the old single-profile ("Learn My Look") storage
+  function migrateOldProfile(){
+    try{
+      const raw = localStorage.getItem(OLD_PROFILE_KEY);
+      if(raw){
+        const old = JSON.parse(raw);
+        if(old && Array.isArray(old.vector) && old.vector.length === FEATURE_LEN && !peopleProfiles['Me']){
+          peopleProfiles['Me'] = { vector: old.vector, samples: old.samples || 1, color: PERSON_PALETTE[0], savedAt: old.savedAt || new Date().toISOString() };
+          savePeople();
+        }
+      }
+      localStorage.removeItem(OLD_PROFILE_KEY);
+    }catch(e){}
   }
 
-  function refreshProfilePill(){
-    if(profile){
-      setPill(pillProfile, 'saved (' + profile.samples + ' samples)', 'ok');
-      btnReset.disabled = false;
-    }else{
-      setPill(pillProfile, 'none saved');
-      btnReset.disabled = true;
+  function deletePerson(name){
+    delete peopleProfiles[name];
+    delete window.MirrorMePeople[name];
+    delete lastPersonState[name];
+    savePeople();
+    renderPeopleList();
+    refreshPeoplePill();
+  }
+
+  function renderPeopleList(){
+    const names = Object.keys(peopleProfiles);
+    if(!names.length){
+      peopleListEl.innerHTML = '<p class="hint">No one registered yet.</p>';
+      return;
     }
+    peopleListEl.innerHTML = '';
+    names.forEach(name => {
+      if(!(name in window.MirrorMePeople)) window.MirrorMePeople[name] = false;
+      const row = document.createElement('div');
+      row.className = 'gesture-row';
+      const label = document.createElement('span');
+      label.style.cursor = 'pointer';
+      label.title = 'Click to put this name in the field above';
+      label.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'
+        + peopleProfiles[name].color + ';margin-right:6px;"></span>' + escapeHtml(name) + ' (' + peopleProfiles[name].samples + ' samples)';
+      label.addEventListener('click', () => { personNameInput.value = name; });
+      const del = document.createElement('button');
+      del.textContent = 'Delete';
+      del.addEventListener('click', () => deletePerson(name));
+      row.appendChild(label);
+      row.appendChild(del);
+      peopleListEl.appendChild(row);
+    });
+  }
+
+  function refreshPeoplePill(){
+    const n = Object.keys(peopleProfiles).length;
+    setPill(pillProfile, n + (n === 1 ? ' person' : ' people'), n ? 'ok' : undefined);
+  }
+
+  // running-mean merge: folds new sample vectors into an existing averaged
+  // vector/count pair without needing to keep the raw sample history around
+  function mergeSamples(baseVector, baseCount, newVectors){
+    const merged = baseVector.slice();
+    let n = baseCount;
+    newVectors.forEach(v => {
+      n++;
+      for(let i=0;i<merged.length;i++) merged[i] += (v[i]-merged[i])/n;
+    });
+    return { vector: merged, samples: n };
   }
 
   // ---------- gesture profiles ----------
@@ -454,6 +602,9 @@
       row.className = 'gesture-row';
       const label = document.createElement('span');
       label.textContent = name + ' (' + gestureProfiles[name].samples + ' samples)';
+      label.style.cursor = 'pointer';
+      label.title = 'Click to put this name in the field above';
+      label.addEventListener('click', () => { gestureNameInput.value = name; });
       const del = document.createElement('button');
       del.textContent = 'Delete';
       del.addEventListener('click', () => deleteGesture(name));
@@ -464,14 +615,32 @@
   }
 
   // ---------- camera ----------
+  async function populateCameraSelect(selectEl){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      const prevValue = selectEl.value;
+      selectEl.innerHTML = '';
+      cams.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ('Camera ' + (i+1));
+        selectEl.appendChild(opt);
+      });
+      if(prevValue && cams.some(c => c.deviceId === prevValue)) selectEl.value = prevValue;
+    }catch(e){}
+  }
+
   async function startCamera(){
     btnStart.disabled = true;
     setPill(pillCamera, 'requesting permission…', 'warn');
     try{
-      stream = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         video: { facingMode: 'user', frameRate: { ideal: cameraFps, max: 60 } },
         audio: false
-      });
+      };
+      if(cameraSelect1.value) constraints.video.deviceId = { exact: cameraSelect1.value };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
     }catch(err){
       setPill(pillCamera, 'denied / unavailable', 'err');
       placeholder.textContent = 'Could not access your camera (' + err.name + '). Check your browser/site camera permissions and reload.';
@@ -482,41 +651,78 @@
     await new Promise(resolve => { video.onloadedmetadata = resolve; });
     await video.play();
 
-    outlineCanvas.width = drawCanvas.width = maskCanvas.width = frameCanvas.width = video.videoWidth;
-    outlineCanvas.height = drawCanvas.height = maskCanvas.height = frameCanvas.height = video.videoHeight;
-    glowCanvas.width = Math.max(1, Math.round(video.videoWidth / 2));
-    glowCanvas.height = Math.max(1, Math.round(video.videoHeight / 2));
+    stage.style.aspectRatio = video.videoWidth + ' / ' + video.videoHeight;
+
+    // resizing a canvas clears it, so save any existing drawing and restore it
+    // afterward (scaled to fit) instead of silently wiping it on every restart
+    let savedDrawing = null;
+    if(drawCanvas.width && drawCanvas.height){
+      savedDrawing = document.createElement('canvas');
+      savedDrawing.width = drawCanvas.width;
+      savedDrawing.height = drawCanvas.height;
+      savedDrawing.getContext('2d').drawImage(drawCanvas, 0, 0);
+    }
+
+    outlineCanvas.width = drawCanvas.width = buf1.maskCanvas.width = buf1.frameCanvas.width = video.videoWidth;
+    outlineCanvas.height = drawCanvas.height = buf1.maskCanvas.height = buf1.frameCanvas.height = video.videoHeight;
+    buf1.glowCanvas.width = Math.max(1, Math.round(video.videoWidth / 2));
+    buf1.glowCanvas.height = Math.max(1, Math.round(video.videoHeight / 2));
+
+    if(savedDrawing){
+      drawCtx.drawImage(savedDrawing, 0, 0, savedDrawing.width, savedDrawing.height, 0, 0, drawCanvas.width, drawCanvas.height);
+    }
 
     placeholder.style.display = 'none';
     flipWrap.style.display = 'block';
     setPill(pillCamera, 'on', 'ok');
     btnStop.disabled = false;
-    btnLearn.disabled = false;
-    if(handEnabled && handNet) btnRecordGesture.disabled = false;
+    btnLearnPerson.disabled = false;
+    btnAddMorePerson.disabled = false;
+    btnRecordContinuous.disabled = false;
+    if(handEnabled && handLandmarker) btnRecordGesture.disabled = false;
+
+    populateCameraSelect(cameraSelect1);
 
     if(!net){
-      setPill(pillModel, 'loading…', 'warn');
-      try{
-        net = await bodyPix.load({
-          architecture: 'MobileNetV1',
-          outputStride: 16,
-          multiplier: 0.75,
-          quantBytes: 2
-        });
-        setPill(pillModel, 'ready', 'ok');
-      }catch(err){
-        setPill(pillModel, 'failed to load', 'err');
-        btnStart.disabled = false;
-        return;
-      }
+      const ok = await loadBodyNet();
+      if(!ok){ btnStart.disabled = false; return; }
     }
 
     running = true;
-    detectLoop();
+    camSession1++;
+    detectLoop(camSession1);
+  }
+
+  async function loadBodyNet(){
+    setPill(pillModel, 'loading…', 'warn');
+    try{
+      // this build of body-pix attaches its global as window["body-pix"] rather
+      // than window.bodyPix, so fall back to whichever name actually loaded
+      const bodyPixLib = window.bodyPix || window['body-pix'];
+      if(!bodyPixLib) throw new Error('body-pix library did not load');
+      if(net && net.dispose) net.dispose();
+      const config = bodyQuality === 'accurate'
+        ? { architecture: 'ResNet50', outputStride: 32, quantBytes: 2 }
+        : { architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.75, quantBytes: 2 };
+      net = await bodyPixLib.load(config);
+      setPill(pillModel, 'ready', 'ok');
+      return true;
+    }catch(err){
+      setPill(pillModel, 'failed to load', 'err');
+      net = null;
+      return false;
+    }
   }
 
   function stopCamera(){
     running = false;
+    camSession1++; // invalidates any detectLoop still spinning down, even if a restart flips `running` back on first
+    if(continuousRecording || learning){
+      continuousRecording = false;
+      learning = false;
+      btnRecordContinuous.textContent = '● Record Training Photos';
+      btnRecordContinuous.classList.remove('danger');
+    }
     if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
     flipWrap.style.display = 'none';
     placeholder.style.display = 'flex';
@@ -525,9 +731,65 @@
     setPill(pillPeople, '0');
     btnStart.disabled = false;
     btnStop.disabled = true;
-    btnLearn.disabled = true;
+    btnLearnPerson.disabled = true;
+    btnAddMorePerson.disabled = true;
+    btnRecordContinuous.disabled = true;
     btnRecordGesture.disabled = true;
+    btnAddMoreGesture.disabled = true;
     outlineCtx.clearRect(0,0,outlineCanvas.width,outlineCanvas.height);
+  }
+
+  async function startCamera2(){
+    chkCam2.disabled = true;
+    cam2Status.textContent = 'Requesting permission…';
+    await populateCameraSelect(cameraSelect2);
+    // default to a different camera than camera 1 when more than one is available
+    if(cameraSelect2.options.length > 1 && cameraSelect2.value === cameraSelect1.value){
+      const other = Array.from(cameraSelect2.options).find(o => o.value !== cameraSelect1.value);
+      if(other) cameraSelect2.value = other.value;
+    }
+    const constraints = { video: { frameRate: { ideal: cameraFps, max: 60 } }, audio: false };
+    if(cameraSelect2.value) constraints.video.deviceId = { exact: cameraSelect2.value };
+    try{
+      stream2 = await navigator.mediaDevices.getUserMedia(constraints);
+    }catch(err){
+      cam2Status.textContent = 'Could not access a second camera (' + err.name + ').';
+      chkCam2.checked = false;
+      chkCam2.disabled = false;
+      stage2.style.display = 'none';
+      return;
+    }
+    video2.srcObject = stream2;
+    await new Promise(resolve => { video2.onloadedmetadata = resolve; });
+    await video2.play();
+
+    stage2.style.aspectRatio = video2.videoWidth + ' / ' + video2.videoHeight;
+    buf2 = createBuffers();
+    outlineCanvas2.width = buf2.maskCanvas.width = buf2.frameCanvas.width = video2.videoWidth;
+    outlineCanvas2.height = buf2.maskCanvas.height = buf2.frameCanvas.height = video2.videoHeight;
+    buf2.glowCanvas.width = Math.max(1, Math.round(video2.videoWidth / 2));
+    buf2.glowCanvas.height = Math.max(1, Math.round(video2.videoHeight / 2));
+
+    placeholder2.style.display = 'none';
+    flipWrap2.style.display = 'block';
+    cam2Status.textContent = 'On.';
+    cameraSelect2.disabled = false;
+    chkCam2.disabled = false;
+
+    running2 = true;
+    camSession2++;
+    detectLoop2(camSession2);
+  }
+
+  function stopCamera2(){
+    running2 = false;
+    camSession2++;
+    if(stream2){ stream2.getTracks().forEach(t => t.stop()); stream2 = null; }
+    flipWrap2.style.display = 'none';
+    placeholder2.style.display = 'flex';
+    placeholder2.textContent = 'Second camera is off.';
+    cam2Status.textContent = 'Off.';
+    if(outlineCanvas2.width) outlineCtx2.clearRect(0,0,outlineCanvas2.width,outlineCanvas2.height);
   }
 
   function applyCameraFps(fps){
@@ -543,13 +805,22 @@
   }
 
   async function ensureHandNet(){
-    if(handNet || handNetLoading) return;
+    if(handLandmarker || handNetLoading) return;
     handNetLoading = true;
     setPill(pillModel, 'loading hand model…', 'warn');
     try{
-      handNet = await handpose.load();
+      const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + TASKS_VISION_VERSION + '/vision_bundle.mjs');
+      const filesetResolver = await vision.FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + TASKS_VISION_VERSION + '/wasm'
+      );
+      handLandmarker = await vision.HandLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numHands: 2
+      });
       setPill(pillModel, 'ready', 'ok');
       btnRecordGesture.disabled = !running;
+      btnAddMoreGesture.disabled = !running;
     }catch(err){
       setPill(pillModel, 'hand model failed to load', 'err');
       handEnabled = false;
@@ -631,14 +902,27 @@
     return Math.sqrt(sum);
   }
 
-  function normalizeHandLandmarks(landmarks){
-    const wrist = landmarks[0];
-    const ref = landmarks[9]; // middle finger MCP, stable hand-size reference
-    const scale = Math.max(1e-3, Math.hypot(ref[0]-wrist[0], ref[1]-wrist[1]));
+  // MediaPipe's standard 21-point hand topology, grouped per finger for drawing
+  const FINGER_CHAINS = [
+    [0,1,2,3,4],
+    [0,5,6,7,8],
+    [0,9,10,11,12],
+    [0,13,14,15,16],
+    [0,17,18,19,20]
+  ];
+  const FINGER_COLORS = ['#facc15','#fb923c','#4ade80','#38bdf8','#f472b6'];
+
+  function normalizeHandLandmarks(landmarks, frameWidth, frameHeight){
+    // landmarks are fractions of frame width/height separately, which are not
+    // equal on a typical 4:3 or 16:9 camera — convert to actual pixels first so
+    // the hand's shape isn't stretched before comparing it
+    const wx = landmarks[0].x * frameWidth, wy = landmarks[0].y * frameHeight;
+    const refx = landmarks[9].x * frameWidth, refy = landmarks[9].y * frameHeight; // middle finger MCP, stable hand-size reference
+    const scale = Math.max(1e-3, Math.hypot(refx - wx, refy - wy));
     const vec = new Array(HAND_FEATURE_LEN).fill(0);
     for(let i=0;i<21;i++){
-      vec[i*2] = (landmarks[i][0] - wrist[0]) / scale;
-      vec[i*2+1] = (landmarks[i][1] - wrist[1]) / scale;
+      vec[i*2] = (landmarks[i].x * frameWidth - wx) / scale;
+      vec[i*2+1] = (landmarks[i].y * frameHeight - wy) / scale;
     }
     return vec;
   }
@@ -649,25 +933,43 @@
     return Math.sqrt(sum);
   }
 
-  function drawHandDots(landmarks){
-    outlineCtx.fillStyle = '#facc15';
-    for(const p of landmarks){
+  function drawHandSkeleton(landmarks){
+    // landmarks are normalized [0,1] fractions of the frame, so scale to pixels
+    const w = outlineCanvas.width, h = outlineCanvas.height;
+    const pts = landmarks.map(p => [p.x*w, p.y*h]);
+
+    FINGER_CHAINS.forEach((chain, fi) => {
+      outlineCtx.strokeStyle = FINGER_COLORS[fi];
+      outlineCtx.lineWidth = 3;
+      outlineCtx.lineJoin = 'round';
       outlineCtx.beginPath();
-      outlineCtx.arc(p[0], p[1], 4, 0, Math.PI*2);
+      chain.forEach((idx, i) => {
+        const [x,y] = pts[idx];
+        if(i===0) outlineCtx.moveTo(x,y); else outlineCtx.lineTo(x,y);
+      });
+      outlineCtx.stroke();
+    });
+
+    pts.forEach(([x,y]) => {
+      outlineCtx.fillStyle = '#ffffff';
+      outlineCtx.beginPath();
+      outlineCtx.arc(x, y, 3, 0, Math.PI*2);
       outlineCtx.fill();
-    }
+    });
   }
 
-  function updateGestureMatch(hands){
+  function updateGestureMatch(hands, frameWidth, frameHeight){
     const names = Object.keys(gestureProfiles);
     let bestName = null, bestSim = 0;
 
-    if(hands.length && names.length){
-      const vec = normalizeHandLandmarks(hands[0].landmarks);
-      names.forEach(name => {
-        const dist = handDistance(vec, gestureProfiles[name].vector);
-        const sim = Math.max(0, 1 - dist / 3.5);
-        if(sim > bestSim){ bestSim = sim; bestName = name; }
+    if(names.length){
+      hands.forEach(h => {
+        const vec = normalizeHandLandmarks(h, frameWidth, frameHeight);
+        names.forEach(name => {
+          const dist = handDistance(vec, gestureProfiles[name].vector);
+          const sim = Math.max(0, 1 - dist / 3.5);
+          if(sim > bestSim){ bestSim = sim; bestName = name; }
+        });
       });
     }
 
@@ -682,13 +984,35 @@
     });
 
     gestureStatus.innerHTML = matched
-      ? 'Detected gesture: <b>' + matched + '</b> (' + Math.round(bestSim*100) + '% match)'
+      ? 'Detected gesture: <b>' + escapeHtml(matched) + '</b> (' + Math.round(bestSim*100) + '% match)'
       : 'Detected gesture: <b>none</b>' + (hands.length ? ' (' + Math.round(bestSim*100) + '% best match, below threshold)' : '');
   }
 
-  function maskToColoredCanvas(personSeg, r,g,b, targetCanvas){
+  function drawPersonLabel(outCtx, box, text, color){
+    if(!box) return;
+    const x = (box.minX + box.maxX) / 2;
+    const y = Math.max(16, box.minY - 8);
+    outCtx.save();
+    outCtx.globalCompositeOperation = 'source-over';
+    outCtx.globalAlpha = 1;
+    // the canvas is mirrored by its parent .flip container, so cancel that
+    // mirror locally around this label's anchor point or the text reads backwards
+    outCtx.translate(x, y);
+    outCtx.scale(-1, 1);
+    outCtx.font = 'bold 15px system-ui, sans-serif';
+    outCtx.textAlign = 'center';
+    const padding = 6;
+    const tw = outCtx.measureText(text).width;
+    outCtx.fillStyle = 'rgba(0,0,0,0.6)';
+    outCtx.fillRect(-tw/2 - padding, -16, tw + padding*2, 20);
+    outCtx.fillStyle = color || '#ffffff';
+    outCtx.fillText(text, 0, 0);
+    outCtx.restore();
+  }
+
+  function maskToColoredCanvas(personSeg, r,g,b, targetCanvas, buf, outlineCv){
     const { data, width, height } = personSeg;
-    const imgData = maskCtx.createImageData(width, height);
+    const imgData = buf.maskCtx.createImageData(width, height);
     const out = imgData.data;
     for(let i=0;i<data.length;i++){
       if(data[i]){
@@ -696,191 +1020,352 @@
         out[o]=r; out[o+1]=g; out[o+2]=b; out[o+3]=255;
       }
     }
-    maskCanvas.width = width; maskCanvas.height = height;
-    maskCtx.putImageData(imgData, 0, 0);
+    buf.maskCanvas.width = width; buf.maskCanvas.height = height;
+    buf.maskCtx.putImageData(imgData, 0, 0);
 
-    glowCtx.clearRect(0,0,glowCanvas.width,glowCanvas.height);
-    glowCtx.filter = 'blur(10px)';
-    glowCtx.drawImage(maskCanvas, 0, 0, glowCanvas.width, glowCanvas.height);
-    glowCtx.filter = 'none';
-    glowCtx.globalCompositeOperation = 'destination-out';
-    glowCtx.drawImage(maskCanvas, 0, 0, glowCanvas.width, glowCanvas.height);
-    glowCtx.globalCompositeOperation = 'source-over';
+    buf.glowCtx.clearRect(0,0,buf.glowCanvas.width,buf.glowCanvas.height);
+    buf.glowCtx.filter = 'blur(10px)';
+    buf.glowCtx.drawImage(buf.maskCanvas, 0, 0, buf.glowCanvas.width, buf.glowCanvas.height);
+    buf.glowCtx.filter = 'none';
+    buf.glowCtx.globalCompositeOperation = 'destination-out';
+    buf.glowCtx.drawImage(buf.maskCanvas, 0, 0, buf.glowCanvas.width, buf.glowCanvas.height);
+    buf.glowCtx.globalCompositeOperation = 'source-over';
 
     targetCanvas.globalCompositeOperation = 'lighter';
     targetCanvas.globalAlpha = 0.95;
-    targetCanvas.drawImage(glowCanvas, 0, 0, outlineCanvas.width, outlineCanvas.height);
+    targetCanvas.drawImage(buf.glowCanvas, 0, 0, outlineCv.width, outlineCv.height);
     targetCanvas.globalAlpha = 1;
     targetCanvas.globalCompositeOperation = 'source-over';
   }
 
-  async function detectLoop(){
-    while(running){
-      let segmentations;
-      try{
-        segmentations = await net.segmentMultiPerson(video, {
-          internalResolution: 'medium',
-          segmentationThreshold: 0.7,
-          maxDetections: 5,
-          scoreThreshold: 0.3,
-          nmsRadius: 20
-        });
-      }catch(err){
-        await sleep(200);
-        continue;
-      }
+  // shared by both cameras: segments everyone in frame, matches each against the
+  // registered people roster, and draws their outline + name label. Only the
+  // primary camera (updateGlobalState=true) is allowed to drive window.MirrorMePeople.
+  async function renderPeopleOutlines(vid, outCtx, outlineCv, buf, updateGlobalState){
+    let segmentations;
+    try{
+      segmentations = await net.segmentMultiPerson(vid, SEGMENT_OPTIONS);
+    }catch(err){
+      return { count: 0, matchLines: [] };
+    }
 
-      setPill(pillPeople, String(segmentations.length), segmentations.length ? 'ok' : undefined);
-      outlineCtx.clearRect(0,0,outlineCanvas.width,outlineCanvas.height);
+    outCtx.clearRect(0,0,outlineCv.width,outlineCv.height);
+    if(!segmentations.length) return { count: 0, matchLines: [] };
 
-      if(segmentations.length){
-        frameCtx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
-        const frameImageData = frameCtx.getImageData(0,0,frameCanvas.width,frameCanvas.height);
+    buf.frameCtx.drawImage(vid, 0, 0, buf.frameCanvas.width, buf.frameCanvas.height);
+    const frameImageData = buf.frameCtx.getImageData(0,0,buf.frameCanvas.width, buf.frameCanvas.height);
+    const peopleNames = Object.keys(peopleProfiles);
+    const seenThisFrame = {};
+    const simByName = {};
+    const matchLines = [];
+    const now = Date.now();
 
-        if(profile && !learning){
-          let bestIdx = -1, bestSim = -1;
-          const sims = segmentations.map(seg => {
-            const feat = extractFeatures(seg, frameImageData, frameCanvas.width);
-            if(!feat) return -1;
-            const dist = featureDistance(feat.vec, profile.vector);
-            const sim = Math.max(0, 1 - dist / 1.4);
-            return sim;
-          });
-          sims.forEach((s,i) => { if(s > bestSim){ bestSim = s; bestIdx = i; } });
-
-          segmentations.forEach((seg, i) => {
-            if(i === bestIdx && bestSim > 0.45){
-              maskToColoredCanvas(seg, 239, 68, 68, outlineCtx); // red = you
-            }else{
-              maskToColoredCanvas(seg, 96, 165, 250, outlineCtx); // blue-gray = others
+    // pass 1: for every detected person, score them against every registered
+    // name (plus a "continuation" score if they're near where that name was
+    // last seen). feat is null when the mask was empty/unusable.
+    const feats = segmentations.map(seg => extractFeatures(seg, frameImageData, buf.frameCanvas.width));
+    const candidates = [];
+    feats.forEach((feat, segIdx) => {
+      if(!feat || !peopleNames.length) return;
+      peopleNames.forEach(name => {
+        const dist = featureDistance(feat.vec, peopleProfiles[name].vector);
+        const sim = Math.max(0, 1 - dist / 1.4);
+        if(sim > MATCH_ACCEPT){
+          candidates.push({ segIdx, name, sim, priority: 2 });
+        }else if(sim > MATCH_CONTINUE){
+          const prev = buf.lastSeen[name];
+          if(prev && (now - prev.time) < MATCH_CONTINUE_MAX_AGE_MS){
+            const [cx, cy] = boxCenter(feat.box);
+            const [px, py] = boxCenter(prev.box);
+            const scaleRef = Math.max(boxDiag(feat.box), boxDiag(prev.box), 1);
+            if(Math.hypot(cx - px, cy - py) < scaleRef * MATCH_CONTINUE_MAX_DIST_RATIO){
+              candidates.push({ segIdx, name, sim, priority: 1 });
             }
-          });
-
-          if(bestIdx >= 0){
-            matchStatus.textContent = 'Best match: ' + Math.round(bestSim*100) + '% similarity to your saved look'
-              + (segmentations.length > 1 ? ' — ' + (segmentations.length-1) + ' other person/people shown in blue-gray.' : '.');
           }
-        }else if(!learning){
-          segmentations.forEach(seg => maskToColoredCanvas(seg, 239, 68, 68, outlineCtx));
+        }
+      });
+    });
+
+    // pass 2: greedily assign, strongest/most-confident candidates first, so
+    // each registered name goes to at most one detected person and vice versa
+    // (otherwise two different people can both get labeled with the same name)
+    candidates.sort((a, b) => (b.priority - a.priority) || (b.sim - a.sim));
+    const assignedSeg = new Set();
+    const assignedName = new Set();
+    const assignment = {}; // segIdx -> { name, sim }
+    candidates.forEach(c => {
+      if(assignedSeg.has(c.segIdx) || assignedName.has(c.name)) return;
+      assignedSeg.add(c.segIdx);
+      assignedName.add(c.name);
+      assignment[c.segIdx] = { name: c.name, sim: c.sim };
+    });
+
+    segmentations.forEach((seg, segIdx) => {
+      const feat = feats[segIdx];
+      const match = assignment[segIdx];
+      if(match){
+        seenThisFrame[match.name] = true;
+        simByName[match.name] = match.sim;
+        buf.lastSeen[match.name] = { box: feat.box, time: now };
+        matchLines.push(match.name + ' (' + Math.round(match.sim*100) + '%)');
+        const [r,g,b] = hexToRgb(peopleProfiles[match.name].color);
+        maskToColoredCanvas(seg, r, g, b, outCtx, buf, outlineCv);
+        drawPersonLabel(outCtx, feat.box, match.name, peopleProfiles[match.name].color);
+      }else if(peopleNames.length){
+        maskToColoredCanvas(seg, 148, 163, 184, outCtx, buf, outlineCv); // slate gray = unrecognized
+        if(feat) drawPersonLabel(outCtx, feat.box, 'unknown', '#cbd5e1');
+      }else{
+        maskToColoredCanvas(seg, 239, 68, 68, outCtx, buf, outlineCv); // no one registered yet
+      }
+    });
+
+    if(updateGlobalState){
+      peopleNames.forEach(name => {
+        const active = !!seenThisFrame[name];
+        window.MirrorMePeople[name] = active;
+        if(lastPersonState[name] !== active){
+          lastPersonState[name] = active;
+          window.dispatchEvent(new CustomEvent('mirrorme:person', { detail: { name, active, similarity: active ? simByName[name] : 0 } }));
+        }
+      });
+      window.MirrorMePeople._visible = peopleNames.filter(n => window.MirrorMePeople[n]);
+    }
+
+    return { count: segmentations.length, matchLines };
+  }
+
+  async function detectLoop(session){
+    while(running && session === camSession1){
+      if(learning){
+        // learning/recording is sampling this same video feed itself; just
+        // keep the live "people detected" count honest and leave the canvas clear
+        outlineCtx.clearRect(0,0,outlineCanvas.width,outlineCanvas.height);
+        try{
+          const segmentations = await net.segmentMultiPerson(video, SEGMENT_OPTIONS);
+          setPill(pillPeople, String(segmentations.length), segmentations.length ? 'ok' : undefined);
+        }catch(err){}
+      }else{
+        const { count, matchLines } = await renderPeopleOutlines(video, outlineCtx, outlineCanvas, buf1, true);
+        setPill(pillPeople, String(count), count ? 'ok' : undefined);
+        if(Object.keys(peopleProfiles).length){
+          matchStatus.textContent = matchLines.length
+            ? 'In frame: ' + matchLines.join(', ') + (count > matchLines.length ? ', plus ' + (count - matchLines.length) + ' unrecognized' : '') + '.'
+            : (count ? count + ' unrecognized person/people in frame.' : 'No one in frame.');
         }
       }
 
-      if(handEnabled && handNet && !recordingGesture){
+      if(handEnabled && handLandmarker && !recordingGesture){
         let hands = [];
-        try{ hands = await handNet.estimateHands(video, { flipHorizontal: false }); }catch(err){ hands = []; }
+        try{
+          const result = handLandmarker.detectForVideo(video, performance.now());
+          hands = result.landmarks || [];
+        }catch(err){ hands = []; }
         setPill(pillHands, String(hands.length), hands.length ? 'ok' : undefined);
-        hands.forEach(h => drawHandDots(h.landmarks));
-        updateGestureMatch(hands);
+        hands.forEach(h => drawHandSkeleton(h));
+        updateGestureMatch(hands, video.videoWidth, video.videoHeight);
       }
 
       await sleep(detectIntervalMs);
     }
   }
 
+  async function detectLoop2(session){
+    while(running2 && session === camSession2){
+      const { count } = await renderPeopleOutlines(video2, outlineCtx2, outlineCanvas2, buf2, false);
+      cam2Status.textContent = count ? (count + ' person/people detected.') : 'On. No one in frame.';
+      await sleep(detectIntervalMs);
+    }
+  }
+
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-  // ---------- learn my look ----------
-  async function learnMyLook(){
+  // samples the primary camera once: returns a feature vector for the largest
+  // detected person, or null if no one usable was seen this tick
+  async function captureOnePersonSample(){
+    let segmentations;
+    try{
+      segmentations = await net.segmentMultiPerson(video, SEGMENT_OPTIONS);
+    }catch(err){ return null; }
+    if(!segmentations.length) return null;
+
+    let largest = segmentations[0], largestCount = -1;
+    buf1.frameCtx.drawImage(video, 0, 0, buf1.frameCanvas.width, buf1.frameCanvas.height);
+    const frameImageData = buf1.frameCtx.getImageData(0,0,buf1.frameCanvas.width, buf1.frameCanvas.height);
+    for(const seg of segmentations){
+      const box = maskBoundingBox(seg.data, seg.width, seg.height);
+      if(box && box.count > largestCount){ largestCount = box.count; largest = seg; }
+    }
+    const feat = extractFeatures(largest, frameImageData, buf1.frameCanvas.width);
+    return feat ? feat.vec : null;
+  }
+
+  // ---------- learn a person ----------
+  async function learnPerson(append){
+    const name = personNameInput.value.trim();
+    if(!name){
+      learnStatus.textContent = 'Type a name for this person first.';
+      return;
+    }
+    if(append && !peopleProfiles[name]){
+      learnStatus.textContent = 'No one named "' + name + '" registered yet — use "Learn This Person" to create them first.';
+      return;
+    }
     if(!running || learning) return;
     learning = true;
-    btnLearn.disabled = true;
+    btnLearnPerson.disabled = true;
+    btnAddMorePerson.disabled = true;
     progressWrap.style.display = 'block';
-    const totalSamples = 8;
+    const totalSamples = BODY_LEARN_SAMPLES;
     const collected = [];
 
     for(let i=0;i<totalSamples;i++){
       learnStatus.textContent = 'Hold still… sampling ' + (i+1) + '/' + totalSamples;
       progressBar.style.width = Math.round(((i)/totalSamples)*100) + '%';
-      await sleep(350);
+      await sleep(BODY_LEARN_INTERVAL_MS);
 
-      let segmentations;
-      try{
-        segmentations = await net.segmentMultiPerson(video, {
-          internalResolution: 'medium',
-          segmentationThreshold: 0.7,
-          maxDetections: 5,
-          scoreThreshold: 0.3,
-          nmsRadius: 20
-        });
-      }catch(err){ continue; }
-
-      if(!segmentations.length) continue;
-      let largest = segmentations[0], largestCount = -1;
-      frameCtx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
-      const frameImageData = frameCtx.getImageData(0,0,frameCanvas.width,frameCanvas.height);
-
-      for(const seg of segmentations){
-        const box = maskBoundingBox(seg.data, seg.width, seg.height);
-        if(box && box.count > largestCount){ largestCount = box.count; largest = seg; }
-      }
-      const feat = extractFeatures(largest, frameImageData, frameCanvas.width);
-      if(feat) collected.push(feat.vec);
+      const vec = await captureOnePersonSample();
+      if(vec) collected.push(vec);
     }
 
     progressBar.style.width = '100%';
 
-    if(collected.length < 3){
-      learnStatus.textContent = 'Could not get a clear enough view of you — make sure you\'re well lit and fully in frame, then try again.';
+    if(collected.length < BODY_LEARN_MIN_SAMPLES){
+      learnStatus.textContent = 'Only got a clear view ' + collected.length + ' time(s) — make sure ' + name + ' is well lit and alone in frame, then try again.';
     }else{
-      const avg = new Array(FEATURE_LEN).fill(0);
-      collected.forEach(v => { for(let i=0;i<FEATURE_LEN;i++) avg[i]+=v[i]; });
-      for(let i=0;i<FEATURE_LEN;i++) avg[i] /= collected.length;
-      saveProfile(avg, collected.length);
-      learnStatus.textContent = 'Saved your look from ' + collected.length + ' samples.';
-      matchStatus.textContent = 'Profile ready — you\'ll be outlined in red, anyone else in blue-gray.';
+      const existing = peopleProfiles[name];
+      const base = (append && existing) ? existing.vector : new Array(FEATURE_LEN).fill(0);
+      const baseCount = (append && existing) ? existing.samples : 0;
+      const merged = mergeSamples(base, baseCount, collected);
+      const color = (existing && existing.color) || PERSON_PALETTE[Object.keys(peopleProfiles).length % PERSON_PALETTE.length];
+      peopleProfiles[name] = { vector: merged.vector, samples: merged.samples, color, savedAt: new Date().toISOString() };
+      if(!(name in window.MirrorMePeople)) window.MirrorMePeople[name] = false;
+      savePeople();
+      renderPeopleList();
+      refreshPeoplePill();
+      learnStatus.textContent = append
+        ? 'Added ' + collected.length + ' more samples to "' + name + '" — now built from ' + merged.samples + ' total.'
+        : 'Registered "' + name + '" from ' + collected.length + ' samples.';
+      if(!append) personNameInput.value = '';
     }
 
     setTimeout(() => { progressWrap.style.display = 'none'; progressBar.style.width = '0%'; }, 1200);
     learning = false;
-    btnLearn.disabled = false;
+    btnLearnPerson.disabled = !running;
+    btnAddMorePerson.disabled = !running;
+  }
+
+  // ---------- continuous "Record Training Photos" (open-ended, click Stop when done) ----------
+  async function toggleContinuousRecord(){
+    if(continuousRecording){
+      continuousRecording = false; // the loop below notices this and finishes up
+      return;
+    }
+    const name = personNameInput.value.trim();
+    if(!name){
+      learnStatus.textContent = 'Type a name for this person first.';
+      return;
+    }
+    if(!running || learning) return;
+
+    continuousRecording = true;
+    learning = true; // reuse the same guard detectLoop already checks, so it stays paused while we sample
+    btnLearnPerson.disabled = true;
+    btnAddMorePerson.disabled = true;
+    btnRecordContinuous.textContent = '■ Stop Recording';
+    btnRecordContinuous.classList.add('danger');
+    const collected = [];
+    const startedAt = Date.now();
+
+    while(continuousRecording){
+      const secs = Math.round((Date.now() - startedAt) / 1000);
+      learnStatus.textContent = 'Recording "' + name + '"… move around a little for variety. Captured ' + collected.length + ' photo(s) over ' + secs + 's. Click "Stop Recording" when done.';
+      await sleep(350);
+      if(!continuousRecording) break;
+      const vec = await captureOnePersonSample();
+      if(vec) collected.push(vec);
+    }
+
+    btnRecordContinuous.textContent = '● Record Training Photos';
+    btnRecordContinuous.classList.remove('danger');
+    learning = false;
+    btnLearnPerson.disabled = !running;
+    btnAddMorePerson.disabled = !running;
+
+    if(collected.length < BODY_LEARN_MIN_SAMPLES){
+      learnStatus.textContent = 'Only captured ' + collected.length + ' usable photo(s) — try recording for a bit longer next time.';
+      return;
+    }
+    const existing = peopleProfiles[name];
+    const base = existing ? existing.vector : new Array(FEATURE_LEN).fill(0);
+    const baseCount = existing ? existing.samples : 0;
+    const merged = mergeSamples(base, baseCount, collected);
+    const color = (existing && existing.color) || PERSON_PALETTE[Object.keys(peopleProfiles).length % PERSON_PALETTE.length];
+    peopleProfiles[name] = { vector: merged.vector, samples: merged.samples, color, savedAt: new Date().toISOString() };
+    if(!(name in window.MirrorMePeople)) window.MirrorMePeople[name] = false;
+    savePeople();
+    renderPeopleList();
+    refreshPeoplePill();
+    learnStatus.textContent = 'Recorded ' + collected.length + ' photos for "' + name + '" — now built from ' + merged.samples + ' total.';
   }
 
   // ---------- record a hand gesture ----------
-  async function recordGesture(){
+  async function recordGesture(append){
     const name = gestureNameInput.value.trim();
     if(!name){
       gestureRecordStatus.textContent = 'Type a name for this gesture first.';
       return;
     }
-    if(!running || !handNet || recordingGesture) return;
+    if(append && !gestureProfiles[name]){
+      gestureRecordStatus.textContent = 'No existing gesture named "' + name + '" yet — use "Record Gesture" to create it first.';
+      return;
+    }
+    if(!running || !handLandmarker || recordingGesture) return;
 
     recordingGesture = true;
     btnRecordGesture.disabled = true;
+    btnAddMoreGesture.disabled = true;
     gestureProgressWrap.style.display = 'block';
-    const totalSamples = 6;
+    const totalSamples = GESTURE_SAMPLES;
     const collected = [];
 
     for(let i=0;i<totalSamples;i++){
       gestureRecordStatus.textContent = 'Hold the pose… sampling ' + (i+1) + '/' + totalSamples;
       gestureProgressBar.style.width = Math.round((i/totalSamples)*100) + '%';
-      await sleep(250);
+      await sleep(GESTURE_INTERVAL_MS);
 
       let hands = [];
-      try{ hands = await handNet.estimateHands(video, { flipHorizontal: false }); }catch(err){ continue; }
+      try{
+        const result = handLandmarker.detectForVideo(video, performance.now());
+        hands = result.landmarks || [];
+      }catch(err){ continue; }
       if(!hands.length) continue;
-      collected.push(normalizeHandLandmarks(hands[0].landmarks));
+      collected.push(normalizeHandLandmarks(hands[0], video.videoWidth, video.videoHeight));
     }
 
     gestureProgressBar.style.width = '100%';
 
-    if(collected.length < 3){
-      gestureRecordStatus.textContent = 'Could not see your hand clearly enough — keep it steady and well lit, then try again.';
+    if(collected.length < GESTURE_MIN_SAMPLES){
+      gestureRecordStatus.textContent = 'Only saw your hand clearly ' + collected.length + ' time(s) — keep it steady and well lit, then try again.';
     }else{
-      const avg = new Array(HAND_FEATURE_LEN).fill(0);
-      collected.forEach(v => { for(let i=0;i<HAND_FEATURE_LEN;i++) avg[i]+=v[i]; });
-      for(let i=0;i<HAND_FEATURE_LEN;i++) avg[i] /= collected.length;
-      gestureProfiles[name] = { vector: avg, samples: collected.length, savedAt: new Date().toISOString() };
-      window.MirrorMeGestures[name] = false;
-      lastGestureState[name] = false;
+      const existing = gestureProfiles[name];
+      const base = (append && existing) ? existing.vector : new Array(HAND_FEATURE_LEN).fill(0);
+      const baseCount = (append && existing) ? existing.samples : 0;
+      const merged = mergeSamples(base, baseCount, collected);
+      gestureProfiles[name] = { vector: merged.vector, samples: merged.samples, savedAt: new Date().toISOString() };
+      if(!(name in window.MirrorMeGestures)) window.MirrorMeGestures[name] = false;
+      if(!(name in lastGestureState)) lastGestureState[name] = false;
       saveGestures();
       renderGestureList();
-      gestureRecordStatus.textContent = 'Saved gesture "' + name + '" from ' + collected.length + ' samples.';
-      gestureNameInput.value = '';
+      gestureRecordStatus.textContent = append
+        ? 'Added ' + collected.length + ' more samples to "' + name + '" — now built from ' + merged.samples + ' total.'
+        : 'Saved gesture "' + name + '" from ' + collected.length + ' samples.';
+      if(!append) gestureNameInput.value = '';
     }
 
     setTimeout(() => { gestureProgressWrap.style.display = 'none'; gestureProgressBar.style.width = '0%'; }, 1200);
     recordingGesture = false;
     btnRecordGesture.disabled = false;
+    btnAddMoreGesture.disabled = false;
   }
 
   // ---------- drawing layer ----------
@@ -890,8 +1375,11 @@
     const rect = drawCanvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    // drawCanvas sits inside a container mirrored with scaleX(-1) for a natural
+    // selfie view, so its on-screen box is flipped relative to its own pixel
+    // buffer — invert X here or strokes land on the opposite side of the cursor.
     return {
-      x: (clientX - rect.left) / rect.width * drawCanvas.width,
+      x: drawCanvas.width - (clientX - rect.left) / rect.width * drawCanvas.width,
       y: (clientY - rect.top) / rect.height * drawCanvas.height
     };
   }
@@ -939,9 +1427,27 @@
   // ---------- wiring ----------
   btnStart.addEventListener('click', startCamera);
   btnStop.addEventListener('click', stopCamera);
-  btnLearn.addEventListener('click', learnMyLook);
-  btnReset.addEventListener('click', resetProfile);
-  btnRecordGesture.addEventListener('click', recordGesture);
+  btnLearnPerson.addEventListener('click', () => learnPerson(false));
+  btnAddMorePerson.addEventListener('click', () => learnPerson(true));
+  btnRecordContinuous.addEventListener('click', toggleContinuousRecord);
+  btnRecordGesture.addEventListener('click', () => recordGesture(false));
+  btnAddMoreGesture.addEventListener('click', () => recordGesture(true));
+
+  cameraSelect1.addEventListener('change', async () => {
+    if(running){ stopCamera(); await startCamera(); }
+  });
+  chkCam2.addEventListener('change', async () => {
+    if(chkCam2.checked){
+      stage2.style.display = 'block';
+      await startCamera2();
+    }else{
+      stopCamera2();
+      stage2.style.display = 'none';
+    }
+  });
+  cameraSelect2.addEventListener('change', async () => {
+    if(running2){ stopCamera2(); await startCamera2(); }
+  });
 
   cameraFpsSlider.addEventListener('input', () => {
     const fps = Number(cameraFpsSlider.value);
@@ -953,14 +1459,25 @@
     refreshRateVal.textContent = ups + ' / sec';
     detectIntervalMs = Math.round(1000 / ups);
   });
+  bodyQualitySelect.addEventListener('change', async () => {
+    bodyQuality = bodyQualitySelect.value;
+    if(running){
+      await loadBodyNet(); // disposes the currently-loaded model itself before loading the new one
+    }else if(net){
+      if(net.dispose) net.dispose();
+      net = null;
+    }
+  });
 
   chkHands.addEventListener('change', async () => {
     handEnabled = chkHands.checked;
     if(handEnabled){
       await ensureHandNet();
-      btnRecordGesture.disabled = !running || !handNet;
+      btnRecordGesture.disabled = !running || !handLandmarker;
+      btnAddMoreGesture.disabled = !running || !handLandmarker;
     }else{
       btnRecordGesture.disabled = true;
+      btnAddMoreGesture.disabled = true;
       setPill(pillHands, '0');
       gestureStatus.innerHTML = 'Detected gesture: <b>none</b>';
     }
@@ -972,8 +1489,10 @@
     placeholder.textContent = 'Your browser does not support camera access (getUserMedia). Try a recent Chrome, Edge, or Firefox.';
   }
 
-  refreshProfilePill();
+  refreshPeoplePill();
+  renderPeopleList();
   renderGestureList();
+  populateCameraSelect(cameraSelect1);
 })();
 </script>
 </body>
