@@ -217,7 +217,7 @@
 <body>
 
   <h1>🪞 Mirror Me — Body Outline &amp; Personal Tracker</h1>
-  <p class="subtitle">Live body segmentation outlines people right in your browser, lets you draw over your own silhouette, and can learn each registered person's visual "signature" so it can label who's who — even two people at once. Nothing ever leaves your device.</p>
+  <p class="subtitle">Live body segmentation outlines people right in your browser, lets you draw over your own silhouette, and can learn each registered person's face so it can label who's who — even two people at once. Nothing ever leaves your device.</p>
 
   <div class="stage" id="stage">
     <div class="placeholder" id="placeholder">Camera is off.<br>Press "Start Camera" below to begin.</div>
@@ -239,6 +239,7 @@
   <div class="statusbar">
     <span class="pill" id="pillCamera">Camera: <b>off</b></span>
     <span class="pill" id="pillModel">Model: <b>not loaded</b></span>
+    <span class="pill" id="pillFace">Face model: <b>not loaded</b></span>
     <span class="pill" id="pillPeople">People detected: <b>0</b></span>
     <span class="pill" id="pillHands">Hands detected: <b>0</b></span>
     <span class="pill" id="pillProfile">Registered: <b>0 people</b></span>
@@ -251,7 +252,11 @@
       <button class="primary" id="btnStart">Start Camera</button>
       <button id="btnStop" disabled>Stop Camera</button>
     </div>
-    <p class="hint">On first start the browser will ask for camera permission, and the segmentation model (a few MB) will download once and cache in your browser. Once permission is granted the dropdown lists your available cameras — picking a different one restarts the feed on that camera.</p>
+    <div class="row">
+      <label class="inline" style="min-width:150px;">Pi camera address</label>
+      <input type="text" id="piCamUrlInput" placeholder="http://192.168.4.235:8080" style="min-width:220px;">
+    </div>
+    <p class="hint">On first start the browser will ask for camera permission, and the segmentation model (a few MB) will download once and cache in your browser. Once permission is granted the dropdown lists your available cameras, plus a "Raspberry Pi camera (network)" option that reads an MJPEG stream from the address above — picking a different camera restarts the feed on that one. The Pi option only works when running this page locally (via START_MIRROR_ME.bat), not on the https GitHub Pages link.</p>
 
     <div class="divider"></div>
 
@@ -260,7 +265,7 @@
       <label class="inline"><input type="checkbox" id="chkCam2"> Enable a second camera view</label>
       <select id="cameraSelect2" style="min-width:160px;" disabled></select>
     </div>
-    <p class="hint" id="cam2Status">Off. A second webcam can view the scene at the same time, with the same outline and name recognition — it's a viewer only, though, and doesn't drive the Learn/Record controls below, which stay tied to the first camera.</p>
+    <p class="hint" id="cam2Status">Off. Start the main camera first — it loads the detection models this feed reuses. This also needs a genuinely separate camera device; most desktop PCs only have one, and many webcam drivers refuse to open the same camera twice at once.</p>
 
     <div class="divider"></div>
 
@@ -294,10 +299,10 @@
       <button id="btnRecordContinuous" disabled>● Record Training Photos</button>
       <div id="progressWrap"><div id="progressBar"></div></div>
     </div>
-    <p class="hint" id="learnStatus">Have just that one person stand alone in frame, type their name above, then click "Learn This Person". Register as many people as you like — each gets their own outline color. To improve someone already registered, type their exact name and click "Add More Samples" instead of re-learning from scratch. For the best results, click "Record Training Photos" and walk around — turn, step closer, then step farther back — for a while; it keeps capturing photos until you click "Stop Recording", then blends them in. Recognition is also forgiving while you move: once it's confident who you are, it'll keep tracking you through a few uncertain frames (walking, turning, being farther away) instead of needing a perfect match every single frame.</p>
+    <p class="hint" id="learnStatus">Have just that one person look at the camera, type their name above, then click "Learn This Person" — it needs a clear view of their face, not just their body. Register as many people as you like — each gets their own outline color. To improve someone already registered, type their exact name and click "Add More Samples" instead of re-learning from scratch. For the best results, click "Record Training Photos" and turn your head a little, try a few expressions, and step closer/farther for a while; it keeps capturing until you click "Stop Recording", then blends it all in. Recognition is also forgiving while you move: once it's confident who you are, it'll keep tracking you through a few frames where your face isn't clearly visible (turning away briefly, walking, being farther off) instead of needing a perfect match every single frame.</p>
     <div class="gesture-list" id="peopleList"></div>
     <p class="hint" id="matchStatus">No one registered yet — everyone detected is outlined in plain red.</p>
-    <p class="hint">Registered people are live on the page as <code>window.MirrorMePeople</code> (e.g. <code>window.MirrorMePeople["Rayden"]</code> is <code>true</code>/<code>false</code> each frame, and <code>window.MirrorMePeople._visible</code> lists everyone currently matched), plus a <code>mirrorme:person</code> event on <code>window</code> with <code>{ name, active, similarity }</code> — so you can assign different values or behavior per recognized person, including when two specific people are both in frame at once.</p>
+    <p class="hint">Registered people are live on the page as <code>window.MirrorMePeople</code> (e.g. <code>window.MirrorMePeople["Rayden"]</code> is <code>true</code>/<code>false</code> each frame, and <code>window.MirrorMePeople._visible</code> lists everyone currently matched), plus a <code>mirrorme:person</code> event on <code>window</code> with <code>{ name, active, similarity }</code> — so you can assign different values or behavior per recognized person, including when two specific people are both in frame at once. Matching is based on lightweight on-device face geometry, not a production security system — very similar-looking people, extreme angles, or poor lighting can still confuse it.</p>
 
     <div class="divider"></div>
 
@@ -328,7 +333,7 @@
   </div>
 
   <footer>
-    All video, segmentation and "learning" happen locally in your browser using TensorFlow.js. No frame, image or profile data is ever uploaded or sent anywhere — your profile is only saved in this browser's local storage.
+    All video, segmentation, face/hand tracking and "learning" happen locally in your browser using TensorFlow.js and MediaPipe. No frame, image, face or profile data is ever uploaded or sent anywhere — everything is only saved in this browser's local storage.
   </footer>
 
 <script>
@@ -345,6 +350,7 @@
   const drawCtx = drawCanvas.getContext('2d');
 
   const cameraSelect1 = document.getElementById('cameraSelect1');
+  const piCamUrlInput = document.getElementById('piCamUrlInput');
   const chkCam2 = document.getElementById('chkCam2');
   const cameraSelect2 = document.getElementById('cameraSelect2');
   const cam2Status = document.getElementById('cam2Status');
@@ -359,6 +365,7 @@
 
   const pillCamera = document.getElementById('pillCamera');
   const pillModel = document.getElementById('pillModel');
+  const pillFace = document.getElementById('pillFace');
   const pillPeople = document.getElementById('pillPeople');
   const pillHands = document.getElementById('pillHands');
   const pillProfile = document.getElementById('pillProfile');
@@ -395,19 +402,27 @@
   const gestureListEl = document.getElementById('gestureList');
   const gestureStatus = document.getElementById('gestureStatus');
 
-  const OLD_PROFILE_KEY = 'mirrorMeProfile';
   const PEOPLE_STORAGE_KEY = 'mirrorMePeopleProfiles';
   const GESTURE_STORAGE_KEY = 'mirrorMeGestureProfiles';
-  const FEATURE_LEN = 10; // headRGB(3) + torsoRGB(3) + legsRGB(3) + aspectRatio(1)
   const HAND_FEATURE_LEN = 42; // 21 landmarks * (x,y) normalized to wrist + hand scale
+
+  // a small, stable set of MediaPipe FaceMesh landmark indices (nose, eyes,
+  // mouth, chin, forehead, cheeks) used to build a lightweight geometric
+  // "shape of your face" signature — scale/position invariant, so it doesn't
+  // care what you're wearing the way the old color-based matching did
+  const FACE_LANDMARK_INDICES = [1, 4, 10, 33, 61, 152, 168, 199, 234, 263, 291, 454];
+  const FACE_FEATURE_LEN = FACE_LANDMARK_INDICES.length * 2;
+  const FACE_MATCH_SCALE = 1.0; // normalizes face-geometry distance into the same 0-1 similarity scale as MATCH_ACCEPT/MATCH_CONTINUE below
+
   const PERSON_PALETTE = ['#ef4444','#60a5fa','#4ade80','#facc15','#f472b6','#a78bfa','#2dd4bf','#fb923c'];
 
   const TASKS_VISION_VERSION = '1.2.0';
   const HAND_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+  const FACE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
-  const BODY_LEARN_SAMPLES = 20;
-  const BODY_LEARN_INTERVAL_MS = 300;
-  const BODY_LEARN_MIN_SAMPLES = 8;
+  const LEARN_SAMPLES = 20;
+  const LEARN_INTERVAL_MS = 300;
+  const LEARN_MIN_SAMPLES = 8;
   const GESTURE_SAMPLES = 15;
   const GESTURE_INTERVAL_MS = 200;
   const GESTURE_MIN_SAMPLES = 6;
@@ -433,6 +448,8 @@
   let bodyQuality = 'fast';
   let handLandmarker = null;
   let handNetLoading = false;
+  let faceLandmarker = null;
+  let faceLandmarkerLoading = false;
   let stream = null;
   let stream2 = null;
   let running = false;
@@ -445,12 +462,11 @@
   let handEnabled = false;
   let cameraFps = Number(cameraFpsSlider.value);
   let detectIntervalMs = Math.round(1000 / Number(refreshRateSlider.value));
+  let droppedOldProfiles = 0;
   let peopleProfiles = loadPeople();
   let lastPersonState = {};
   let gestureProfiles = loadGestures();
   let lastGestureState = {};
-
-  migrateOldProfile();
 
   window.MirrorMeGestures = window.MirrorMeGestures || {};
   window.MirrorMePeople = window.MirrorMePeople || {};
@@ -460,11 +476,9 @@
   function createBuffers(){
     const maskCanvas = document.createElement('canvas');
     const glowCanvas = document.createElement('canvas');
-    const frameCanvas = document.createElement('canvas'); // for sampling video pixel colors
     return {
       maskCanvas, maskCtx: maskCanvas.getContext('2d'),
       glowCanvas, glowCtx: glowCanvas.getContext('2d'),
-      frameCanvas, frameCtx: frameCanvas.getContext('2d', { willReadFrequently: true }),
       lastSeen: {} // name -> { box, time }, used for sticky identity tracking
     };
   }
@@ -492,27 +506,25 @@
       const raw = localStorage.getItem(PEOPLE_STORAGE_KEY);
       if(!raw) return {};
       const parsed = JSON.parse(raw);
-      return (parsed && typeof parsed === 'object') ? parsed : {};
+      if(!parsed || typeof parsed !== 'object') return {};
+      // older versions stored a clothing-color signature instead of a face
+      // signature — those vectors are a different length and incompatible
+      // with the new matching math, so drop them rather than compare garbage
+      const valid = {};
+      Object.keys(parsed).forEach(name => {
+        const p = parsed[name];
+        if(p && Array.isArray(p.vector) && p.vector.length === FACE_FEATURE_LEN){
+          valid[name] = p;
+        }else{
+          droppedOldProfiles++;
+        }
+      });
+      return valid;
     }catch(e){ return {}; }
   }
 
   function savePeople(){
     try{ localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleProfiles)); }catch(e){}
-  }
-
-  // one-time upgrade from the old single-profile ("Learn My Look") storage
-  function migrateOldProfile(){
-    try{
-      const raw = localStorage.getItem(OLD_PROFILE_KEY);
-      if(raw){
-        const old = JSON.parse(raw);
-        if(old && Array.isArray(old.vector) && old.vector.length === FEATURE_LEN && !peopleProfiles['Me']){
-          peopleProfiles['Me'] = { vector: old.vector, samples: old.samples || 1, color: PERSON_PALETTE[0], savedAt: old.savedAt || new Date().toISOString() };
-          savePeople();
-        }
-      }
-      localStorage.removeItem(OLD_PROFILE_KEY);
-    }catch(e){}
   }
 
   function deletePerson(name){
@@ -615,6 +627,41 @@
   }
 
   // ---------- camera ----------
+  // Network camera (e.g. a webcam on a Raspberry Pi serving MJPEG at /stream).
+  // Only works when this page itself is loaded over http (e.g. the local
+  // START_MIRROR_ME.bat server) — browsers block this as mixed content on the
+  // https GitHub Pages version, since the Pi's stream is plain http.
+  const PI_CAM_ID = 'pi-camera';
+  const PI_CAM_DEFAULT = 'http://192.168.4.235:8080';
+  function piCamBase(){
+    try{ return (localStorage.getItem('piCamUrl') || PI_CAM_DEFAULT).replace(/[/]+$/, ''); }catch(e){ return PI_CAM_DEFAULT; }
+  }
+  async function getPiCameraStream(){
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // needed so later pixel reads (segmentation/face/hand models) don't taint on a cross-origin source
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = () => { const e = new Error('Pi camera unreachable'); e.name = 'PiCameraUnreachable'; rej(e); };
+      img.src = piCamBase() + '/stream';
+    });
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth || 1280; c.height = img.naturalHeight || 720;
+    const cx = c.getContext('2d');
+    let rafId = null;
+    const draw = () => { try{ cx.drawImage(img, 0, 0, c.width, c.height); }catch(e){} rafId = requestAnimationFrame(draw); };
+    draw();
+    const stream = c.captureStream(30);
+    // canvas.captureStream() never stops its draw loop on its own — stopCamera()/
+    // stopCamera2() call this after stopping tracks, or it'd keep redrawing forever
+    stream._piCleanup = () => { if(rafId !== null) cancelAnimationFrame(rafId); };
+    return stream;
+  }
+  async function getCameraStream(constraints){
+    const id = constraints.video && constraints.video.deviceId && constraints.video.deviceId.exact;
+    if(id === PI_CAM_ID) return getPiCameraStream();
+    return navigator.mediaDevices.getUserMedia(constraints);
+  }
+
   async function populateCameraSelect(selectEl){
     try{
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -627,7 +674,11 @@
         opt.textContent = d.label || ('Camera ' + (i+1));
         selectEl.appendChild(opt);
       });
-      if(prevValue && cams.some(c => c.deviceId === prevValue)) selectEl.value = prevValue;
+      const piOpt = document.createElement('option');
+      piOpt.value = PI_CAM_ID;
+      piOpt.textContent = 'Raspberry Pi camera (network)';
+      selectEl.appendChild(piOpt);
+      if(prevValue && (prevValue === PI_CAM_ID || cams.some(c => c.deviceId === prevValue))) selectEl.value = prevValue;
     }catch(e){}
   }
 
@@ -640,7 +691,7 @@
         audio: false
       };
       if(cameraSelect1.value) constraints.video.deviceId = { exact: cameraSelect1.value };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await getCameraStream(constraints);
     }catch(err){
       setPill(pillCamera, 'denied / unavailable', 'err');
       placeholder.textContent = 'Could not access your camera (' + err.name + '). Check your browser/site camera permissions and reload.';
@@ -663,8 +714,8 @@
       savedDrawing.getContext('2d').drawImage(drawCanvas, 0, 0);
     }
 
-    outlineCanvas.width = drawCanvas.width = buf1.maskCanvas.width = buf1.frameCanvas.width = video.videoWidth;
-    outlineCanvas.height = drawCanvas.height = buf1.maskCanvas.height = buf1.frameCanvas.height = video.videoHeight;
+    outlineCanvas.width = drawCanvas.width = buf1.maskCanvas.width = video.videoWidth;
+    outlineCanvas.height = drawCanvas.height = buf1.maskCanvas.height = video.videoHeight;
     buf1.glowCanvas.width = Math.max(1, Math.round(video.videoWidth / 2));
     buf1.glowCanvas.height = Math.max(1, Math.round(video.videoHeight / 2));
 
@@ -676,9 +727,6 @@
     flipWrap.style.display = 'block';
     setPill(pillCamera, 'on', 'ok');
     btnStop.disabled = false;
-    btnLearnPerson.disabled = false;
-    btnAddMorePerson.disabled = false;
-    btnRecordContinuous.disabled = false;
     if(handEnabled && handLandmarker) btnRecordGesture.disabled = false;
 
     populateCameraSelect(cameraSelect1);
@@ -687,6 +735,13 @@
       const ok = await loadBodyNet();
       if(!ok){ btnStart.disabled = false; return; }
     }
+    if(!faceLandmarker){
+      await ensureFaceLandmarker();
+    }
+    // Learn/Add More/Record all need a face match, so they stay disabled if the face model failed
+    btnLearnPerson.disabled = !faceLandmarker;
+    btnAddMorePerson.disabled = !faceLandmarker;
+    btnRecordContinuous.disabled = !faceLandmarker;
 
     running = true;
     camSession1++;
@@ -723,7 +778,7 @@
       btnRecordContinuous.textContent = '● Record Training Photos';
       btnRecordContinuous.classList.remove('danger');
     }
-    if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+    if(stream){ if(stream._piCleanup) stream._piCleanup(); stream.getTracks().forEach(t => t.stop()); stream = null; }
     flipWrap.style.display = 'none';
     placeholder.style.display = 'flex';
     placeholder.textContent = 'Camera is off.\nPress "Start Camera" below to begin.';
@@ -740,7 +795,16 @@
   }
 
   async function startCamera2(){
+    if(!net){
+      cam2Status.textContent = 'Start the main camera first (above) — it loads the detection model this feed reuses.';
+      cam2Status.style.color = '#f87171';
+      chkCam2.checked = false;
+      stage2.style.display = 'none';
+      return;
+    }
     chkCam2.disabled = true;
+    cameraSelect2.disabled = true;
+    cam2Status.style.color = '';
     cam2Status.textContent = 'Requesting permission…';
     await populateCameraSelect(cameraSelect2);
     // default to a different camera than camera 1 when more than one is available
@@ -751,11 +815,13 @@
     const constraints = { video: { frameRate: { ideal: cameraFps, max: 60 } }, audio: false };
     if(cameraSelect2.value) constraints.video.deviceId = { exact: cameraSelect2.value };
     try{
-      stream2 = await navigator.mediaDevices.getUserMedia(constraints);
+      stream2 = await getCameraStream(constraints);
     }catch(err){
-      cam2Status.textContent = 'Could not access a second camera (' + err.name + ').';
+      cam2Status.textContent = 'Could not access a second camera (' + err.name + '). If you only have one webcam, this is expected — many cameras can\'t be opened twice at once.';
+      cam2Status.style.color = '#f87171';
       chkCam2.checked = false;
       chkCam2.disabled = false;
+      cameraSelect2.disabled = false;
       stage2.style.display = 'none';
       return;
     }
@@ -765,13 +831,14 @@
 
     stage2.style.aspectRatio = video2.videoWidth + ' / ' + video2.videoHeight;
     buf2 = createBuffers();
-    outlineCanvas2.width = buf2.maskCanvas.width = buf2.frameCanvas.width = video2.videoWidth;
-    outlineCanvas2.height = buf2.maskCanvas.height = buf2.frameCanvas.height = video2.videoHeight;
+    outlineCanvas2.width = buf2.maskCanvas.width = video2.videoWidth;
+    outlineCanvas2.height = buf2.maskCanvas.height = video2.videoHeight;
     buf2.glowCanvas.width = Math.max(1, Math.round(video2.videoWidth / 2));
     buf2.glowCanvas.height = Math.max(1, Math.round(video2.videoHeight / 2));
 
     placeholder2.style.display = 'none';
     flipWrap2.style.display = 'block';
+    cam2Status.style.color = '';
     cam2Status.textContent = 'On.';
     cameraSelect2.disabled = false;
     chkCam2.disabled = false;
@@ -784,7 +851,7 @@
   function stopCamera2(){
     running2 = false;
     camSession2++;
-    if(stream2){ stream2.getTracks().forEach(t => t.stop()); stream2 = null; }
+    if(stream2){ if(stream2._piCleanup) stream2._piCleanup(); stream2.getTracks().forEach(t => t.stop()); stream2 = null; }
     flipWrap2.style.display = 'none';
     placeholder2.style.display = 'flex';
     placeholder2.textContent = 'Second camera is off.';
@@ -804,15 +871,32 @@
     }
   }
 
+  // the hand and face models both come from the same @mediapipe/tasks-vision
+  // bundle and wasm fileset — load each only once and share them
+  let visionModulePromise = null;
+  function loadVisionModule(){
+    if(!visionModulePromise){
+      visionModulePromise = import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + TASKS_VISION_VERSION + '/vision_bundle.mjs');
+    }
+    return visionModulePromise;
+  }
+  let filesetResolverPromise = null;
+  function getFilesetResolver(vision){
+    if(!filesetResolverPromise){
+      filesetResolverPromise = vision.FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + TASKS_VISION_VERSION + '/wasm'
+      );
+    }
+    return filesetResolverPromise;
+  }
+
   async function ensureHandNet(){
     if(handLandmarker || handNetLoading) return;
     handNetLoading = true;
     setPill(pillModel, 'loading hand model…', 'warn');
     try{
-      const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + TASKS_VISION_VERSION + '/vision_bundle.mjs');
-      const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + TASKS_VISION_VERSION + '/wasm'
-      );
+      const vision = await loadVisionModule();
+      const filesetResolver = await getFilesetResolver(vision);
       handLandmarker = await vision.HandLandmarker.createFromOptions(filesetResolver, {
         baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate: 'GPU' },
         runningMode: 'VIDEO',
@@ -827,6 +911,25 @@
       chkHands.checked = false;
     }
     handNetLoading = false;
+  }
+
+  async function ensureFaceLandmarker(){
+    if(faceLandmarker || faceLandmarkerLoading) return;
+    faceLandmarkerLoading = true;
+    setPill(pillFace, 'loading…', 'warn');
+    try{
+      const vision = await loadVisionModule();
+      const filesetResolver = await getFilesetResolver(vision);
+      faceLandmarker = await vision.FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: { modelAssetPath: FACE_MODEL_URL, delegate: 'GPU' },
+        runningMode: 'VIDEO',
+        numFaces: 6
+      });
+      setPill(pillFace, 'ready', 'ok');
+    }catch(err){
+      setPill(pillFace, 'failed to load', 'err');
+    }
+    faceLandmarkerLoading = false;
   }
 
   // ---------- segmentation + outline rendering ----------
@@ -850,55 +953,41 @@
     return { minX, minY, maxX, maxY, count };
   }
 
-  function extractFeatures(personSeg, frameImageData, frameWidth){
-    const { data, width, height } = personSeg;
-    const box = maskBoundingBox(data, width, height);
-    if(!box) return null;
-    const h = Math.max(1, box.maxY - box.minY);
-    const w = Math.max(1, box.maxX - box.minX);
-    const headY1 = box.minY, headY2 = box.minY + h*0.20;
-    const torsoY1 = headY2, torsoY2 = box.minY + h*0.65;
-    const legsY1 = torsoY2, legsY2 = box.maxY;
-
-    const sums = [ [0,0,0,0], [0,0,0,0], [0,0,0,0] ]; // r,g,b,n per region
-    const px = frameImageData.data;
-    const stepY = height > 240 ? 2 : 1;
-    const stepX = width > 320 ? 2 : 1;
-
-    for(let y=box.minY; y<=box.maxY; y+=stepY){
-      let regionIdx;
-      if(y < torsoY1) regionIdx = 0;
-      else if(y < legsY1) regionIdx = 1;
-      else regionIdx = 2;
-      const rowOff = y*width;
-      for(let x=box.minX; x<=box.maxX; x+=stepX){
-        if(!data[rowOff+x]) continue;
-        const pi = (rowOff+x)*4;
-        const s = sums[regionIdx];
-        s[0]+=px[pi]; s[1]+=px[pi+1]; s[2]+=px[pi+2]; s[3]++;
-      }
-    }
-
-    const vec = new Array(FEATURE_LEN).fill(0);
-    for(let r=0;r<3;r++){
-      const s = sums[r];
-      if(s[3] > 0){
-        vec[r*3+0] = (s[0]/s[3])/255;
-        vec[r*3+1] = (s[1]/s[3])/255;
-        vec[r*3+2] = (s[2]/s[3])/255;
-      }
-    }
-    vec[9] = Math.min(2, w / h); // aspect ratio, clamped
-    return { vec, box, area: box.count };
+  function maskContainsPoint(seg, x, y){
+    const xi = Math.round(x), yi = Math.round(y);
+    if(xi < 0 || yi < 0 || xi >= seg.width || yi >= seg.height) return false;
+    return !!seg.data[yi*seg.width + xi];
   }
 
-  function featureDistance(a, b){
+  function faceCenterPixel(landmarks, frameWidth, frameHeight){
+    const nose = landmarks[1];
+    return [nose.x * frameWidth, nose.y * frameHeight];
+  }
+
+  // builds a scale/position-invariant geometric signature from a handful of
+  // stable face landmarks (nose, eyes, mouth, chin, forehead, cheeks), using
+  // the distance between the outer eye corners as the scale reference —
+  // standard practice for geometric face comparison
+  function extractFaceFeatures(landmarks, frameWidth, frameHeight){
+    const nose = landmarks[1];
+    const leftEye = landmarks[33], rightEye = landmarks[263];
+    const nx = nose.x * frameWidth, ny = nose.y * frameHeight;
+    const scale = Math.max(1e-3, Math.hypot(
+      (leftEye.x - rightEye.x) * frameWidth,
+      (leftEye.y - rightEye.y) * frameHeight
+    ));
+    const vec = new Array(FACE_FEATURE_LEN).fill(0);
+    FACE_LANDMARK_INDICES.forEach((idx, i) => {
+      const px = landmarks[idx].x * frameWidth, py = landmarks[idx].y * frameHeight;
+      vec[i*2] = (px - nx) / scale;
+      vec[i*2+1] = (py - ny) / scale;
+    });
+    return vec;
+  }
+
+  function faceFeatureDistance(a, b){
     let sum = 0;
-    for(let i=0;i<FEATURE_LEN;i++){
-      const weight = (i===9) ? 0.3 : 1; // de-emphasize aspect ratio (distance-dependent)
-      const d = (a[i]-b[i]) * weight;
-      sum += d*d;
-    }
+    for(let i=0;i<FACE_FEATURE_LEN;i++){ const d = a[i]-b[i]; sum += d*d; }
     return Math.sqrt(sum);
   }
 
@@ -1038,9 +1127,9 @@
     targetCanvas.globalCompositeOperation = 'source-over';
   }
 
-  // shared by both cameras: segments everyone in frame, matches each against the
-  // registered people roster, and draws their outline + name label. Only the
-  // primary camera (updateGlobalState=true) is allowed to drive window.MirrorMePeople.
+  // shared by both cameras: segments everyone in frame, matches faces against the
+  // registered people roster, and draws each person's outline + name label. Only
+  // the primary camera (updateGlobalState=true) is allowed to drive window.MirrorMePeople.
   async function renderPeopleOutlines(vid, outCtx, outlineCv, buf, updateGlobalState){
     let segmentations;
     try{
@@ -1052,38 +1141,69 @@
     outCtx.clearRect(0,0,outlineCv.width,outlineCv.height);
     if(!segmentations.length) return { count: 0, matchLines: [] };
 
-    buf.frameCtx.drawImage(vid, 0, 0, buf.frameCanvas.width, buf.frameCanvas.height);
-    const frameImageData = buf.frameCtx.getImageData(0,0,buf.frameCanvas.width, buf.frameCanvas.height);
     const peopleNames = Object.keys(peopleProfiles);
     const seenThisFrame = {};
     const simByName = {};
     const matchLines = [];
     const now = Date.now();
+    const boxes = segmentations.map(seg => maskBoundingBox(seg.data, seg.width, seg.height));
 
-    // pass 1: for every detected person, score them against every registered
-    // name (plus a "continuation" score if they're near where that name was
-    // last seen). feat is null when the mask was empty/unusable.
-    const feats = segmentations.map(seg => extractFeatures(seg, frameImageData, buf.frameCanvas.width));
+    // detect every face in frame and match each one against the roster,
+    // independent of which body it belongs to — that's figured out next
+    let faceMatches = [];
+    if(faceLandmarker && peopleNames.length){
+      try{
+        const result = faceLandmarker.detectForVideo(vid, now);
+        const faces = result.faceLandmarks || [];
+        faceMatches = faces.map(landmarks => {
+          const vec = extractFaceFeatures(landmarks, outlineCv.width, outlineCv.height);
+          const [cx, cy] = faceCenterPixel(landmarks, outlineCv.width, outlineCv.height);
+          let bestName = null, bestSim = 0;
+          peopleNames.forEach(name => {
+            const dist = faceFeatureDistance(vec, peopleProfiles[name].vector);
+            const sim = Math.max(0, 1 - dist / FACE_MATCH_SCALE);
+            if(sim > bestSim){ bestSim = sim; bestName = name; }
+          });
+          return { cx, cy, bestName, bestSim };
+        });
+      }catch(err){ faceMatches = []; }
+    }
+
+    // pass 1: build match candidates. a face found inside a person's silhouette
+    // scores a direct match; a body with no visible/matched face this tick can
+    // still continue an identity if it's right where that name was confidently
+    // seen a moment ago (this is what survives someone turning away or walking)
     const candidates = [];
-    feats.forEach((feat, segIdx) => {
-      if(!feat || !peopleNames.length) return;
-      peopleNames.forEach(name => {
-        const dist = featureDistance(feat.vec, peopleProfiles[name].vector);
-        const sim = Math.max(0, 1 - dist / 1.4);
-        if(sim > MATCH_ACCEPT){
-          candidates.push({ segIdx, name, sim, priority: 2 });
-        }else if(sim > MATCH_CONTINUE){
-          const prev = buf.lastSeen[name];
+    segmentations.forEach((seg, segIdx) => {
+      const box = boxes[segIdx];
+      if(!box) return;
+
+      let gotFaceCandidate = false;
+      faceMatches.forEach(fm => {
+        if(!fm.bestName || !maskContainsPoint(seg, fm.cx, fm.cy)) return;
+        gotFaceCandidate = true;
+        if(fm.bestSim > MATCH_ACCEPT){
+          candidates.push({ segIdx, name: fm.bestName, sim: fm.bestSim, priority: 2 });
+        }else if(fm.bestSim > MATCH_CONTINUE){
+          const prev = buf.lastSeen[fm.bestName];
           if(prev && (now - prev.time) < MATCH_CONTINUE_MAX_AGE_MS){
-            const [cx, cy] = boxCenter(feat.box);
-            const [px, py] = boxCenter(prev.box);
-            const scaleRef = Math.max(boxDiag(feat.box), boxDiag(prev.box), 1);
-            if(Math.hypot(cx - px, cy - py) < scaleRef * MATCH_CONTINUE_MAX_DIST_RATIO){
-              candidates.push({ segIdx, name, sim, priority: 1 });
-            }
+            candidates.push({ segIdx, name: fm.bestName, sim: fm.bestSim, priority: 1 });
           }
         }
       });
+
+      if(!gotFaceCandidate){
+        peopleNames.forEach(name => {
+          const prev = buf.lastSeen[name];
+          if(!prev || (now - prev.time) >= MATCH_CONTINUE_MAX_AGE_MS) return;
+          const [cx, cy] = boxCenter(box);
+          const [px, py] = boxCenter(prev.box);
+          const scaleRef = Math.max(boxDiag(box), boxDiag(prev.box), 1);
+          if(Math.hypot(cx - px, cy - py) < scaleRef * MATCH_CONTINUE_MAX_DIST_RATIO){
+            candidates.push({ segIdx, name, sim: MATCH_CONTINUE, priority: 1 });
+          }
+        });
+      }
     });
 
     // pass 2: greedily assign, strongest/most-confident candidates first, so
@@ -1101,19 +1221,19 @@
     });
 
     segmentations.forEach((seg, segIdx) => {
-      const feat = feats[segIdx];
+      const box = boxes[segIdx];
       const match = assignment[segIdx];
       if(match){
         seenThisFrame[match.name] = true;
         simByName[match.name] = match.sim;
-        buf.lastSeen[match.name] = { box: feat.box, time: now };
+        if(box) buf.lastSeen[match.name] = { box, time: now };
         matchLines.push(match.name + ' (' + Math.round(match.sim*100) + '%)');
         const [r,g,b] = hexToRgb(peopleProfiles[match.name].color);
         maskToColoredCanvas(seg, r, g, b, outCtx, buf, outlineCv);
-        drawPersonLabel(outCtx, feat.box, match.name, peopleProfiles[match.name].color);
+        if(box) drawPersonLabel(outCtx, box, match.name, peopleProfiles[match.name].color);
       }else if(peopleNames.length){
         maskToColoredCanvas(seg, 148, 163, 184, outCtx, buf, outlineCv); // slate gray = unrecognized
-        if(feat) drawPersonLabel(outCtx, feat.box, 'unknown', '#cbd5e1');
+        if(box) drawPersonLabel(outCtx, box, 'unknown', '#cbd5e1');
       }else{
         maskToColoredCanvas(seg, 239, 68, 68, outCtx, buf, outlineCv); // no one registered yet
       }
@@ -1179,24 +1299,27 @@
 
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-  // samples the primary camera once: returns a feature vector for the largest
-  // detected person, or null if no one usable was seen this tick
+  // samples the primary camera once: returns a face-geometry feature vector
+  // for the largest/most prominent detected face, or null if no face was
+  // clearly visible this tick
   async function captureOnePersonSample(){
-    let segmentations;
+    if(!faceLandmarker) return null;
+    let result;
     try{
-      segmentations = await net.segmentMultiPerson(video, SEGMENT_OPTIONS);
+      result = faceLandmarker.detectForVideo(video, performance.now());
     }catch(err){ return null; }
-    if(!segmentations.length) return null;
+    const faces = result.faceLandmarks || [];
+    if(!faces.length) return null;
 
-    let largest = segmentations[0], largestCount = -1;
-    buf1.frameCtx.drawImage(video, 0, 0, buf1.frameCanvas.width, buf1.frameCanvas.height);
-    const frameImageData = buf1.frameCtx.getImageData(0,0,buf1.frameCanvas.width, buf1.frameCanvas.height);
-    for(const seg of segmentations){
-      const box = maskBoundingBox(seg.data, seg.width, seg.height);
-      if(box && box.count > largestCount){ largestCount = box.count; largest = seg; }
-    }
-    const feat = extractFeatures(largest, frameImageData, buf1.frameCanvas.width);
-    return feat ? feat.vec : null;
+    let best = faces[0], bestScale = -1;
+    faces.forEach(f => {
+      const scale = Math.hypot(
+        (f[33].x - f[263].x) * video.videoWidth,
+        (f[33].y - f[263].y) * video.videoHeight
+      );
+      if(scale > bestScale){ bestScale = scale; best = f; }
+    });
+    return extractFaceFeatures(best, video.videoWidth, video.videoHeight);
   }
 
   // ---------- learn a person ----------
@@ -1215,13 +1338,13 @@
     btnLearnPerson.disabled = true;
     btnAddMorePerson.disabled = true;
     progressWrap.style.display = 'block';
-    const totalSamples = BODY_LEARN_SAMPLES;
+    const totalSamples = LEARN_SAMPLES;
     const collected = [];
 
     for(let i=0;i<totalSamples;i++){
       learnStatus.textContent = 'Hold still… sampling ' + (i+1) + '/' + totalSamples;
       progressBar.style.width = Math.round(((i)/totalSamples)*100) + '%';
-      await sleep(BODY_LEARN_INTERVAL_MS);
+      await sleep(LEARN_INTERVAL_MS);
 
       const vec = await captureOnePersonSample();
       if(vec) collected.push(vec);
@@ -1229,11 +1352,11 @@
 
     progressBar.style.width = '100%';
 
-    if(collected.length < BODY_LEARN_MIN_SAMPLES){
-      learnStatus.textContent = 'Only got a clear view ' + collected.length + ' time(s) — make sure ' + name + ' is well lit and alone in frame, then try again.';
+    if(collected.length < LEARN_MIN_SAMPLES){
+      learnStatus.textContent = 'Only got a clear view of ' + name + '\'s face ' + collected.length + ' time(s) — make sure they\'re well lit and facing the camera, then try again.';
     }else{
       const existing = peopleProfiles[name];
-      const base = (append && existing) ? existing.vector : new Array(FEATURE_LEN).fill(0);
+      const base = (append && existing) ? existing.vector : new Array(FACE_FEATURE_LEN).fill(0);
       const baseCount = (append && existing) ? existing.samples : 0;
       const merged = mergeSamples(base, baseCount, collected);
       const color = (existing && existing.color) || PERSON_PALETTE[Object.keys(peopleProfiles).length % PERSON_PALETTE.length];
@@ -1278,7 +1401,7 @@
 
     while(continuousRecording){
       const secs = Math.round((Date.now() - startedAt) / 1000);
-      learnStatus.textContent = 'Recording "' + name + '"… move around a little for variety. Captured ' + collected.length + ' photo(s) over ' + secs + 's. Click "Stop Recording" when done.';
+      learnStatus.textContent = 'Recording "' + name + '"… turn your head a little for variety. Captured ' + collected.length + ' photo(s) over ' + secs + 's. Click "Stop Recording" when done.';
       await sleep(350);
       if(!continuousRecording) break;
       const vec = await captureOnePersonSample();
@@ -1291,12 +1414,12 @@
     btnLearnPerson.disabled = !running;
     btnAddMorePerson.disabled = !running;
 
-    if(collected.length < BODY_LEARN_MIN_SAMPLES){
+    if(collected.length < LEARN_MIN_SAMPLES){
       learnStatus.textContent = 'Only captured ' + collected.length + ' usable photo(s) — try recording for a bit longer next time.';
       return;
     }
     const existing = peopleProfiles[name];
-    const base = existing ? existing.vector : new Array(FEATURE_LEN).fill(0);
+    const base = existing ? existing.vector : new Array(FACE_FEATURE_LEN).fill(0);
     const baseCount = existing ? existing.samples : 0;
     const merged = mergeSamples(base, baseCount, collected);
     const color = (existing && existing.color) || PERSON_PALETTE[Object.keys(peopleProfiles).length % PERSON_PALETTE.length];
@@ -1436,6 +1559,10 @@
   cameraSelect1.addEventListener('change', async () => {
     if(running){ stopCamera(); await startCamera(); }
   });
+  piCamUrlInput.value = piCamBase();
+  piCamUrlInput.addEventListener('change', () => {
+    try{ localStorage.setItem('piCamUrl', piCamUrlInput.value.trim() || PI_CAM_DEFAULT); }catch(e){}
+  });
   chkCam2.addEventListener('change', async () => {
     if(chkCam2.checked){
       stage2.style.display = 'block';
@@ -1493,6 +1620,12 @@
   renderPeopleList();
   renderGestureList();
   populateCameraSelect(cameraSelect1);
+
+  if(droppedOldProfiles > 0){
+    savePeople(); // persist the cleanup so the stale entries don't linger
+    learnStatus.textContent = droppedOldProfiles + ' previously registered ' + (droppedOldProfiles === 1 ? 'person' : 'people')
+      + ' used the old clothing-color matching and had to be dropped — face-based matching needs them re-registered.';
+  }
 })();
 </script>
 </body>
